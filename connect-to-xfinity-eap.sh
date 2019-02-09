@@ -79,9 +79,9 @@ function MainLoop() {
     do
         local SLEEP_AMOUNT=5
         sleep $SLEEP_AMOUNT
-        ping -c1 www.google.com &>/dev/null
+        timeout --preserve-status 0.15 ping -c1 www.google.com &>/dev/null
         local INTERNET_UP=$?
-        ping -c1 10.224.0.1 &>/dev/null
+        timeout --preserve-status 0.15 ping -c1 10.224.0.1 &>/dev/null
         local COMCAST_GATEWAY_UP=$?
         if [ ! $INTERNET_UP -eq 0 ] && [ $COMCAST_GATEWAY_UP -eq 0 ]
         then
