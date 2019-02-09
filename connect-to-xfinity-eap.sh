@@ -85,7 +85,7 @@ function MainLoop() {
         local COMCAST_GATEWAY_UP=$?
         if [ ! $INTERNET_UP -eq 0 ] && [ $COMCAST_GATEWAY_UP -eq 0 ]
         then
-            timeout --preserve-status 1.5 ping -c1 www.google.com &>/dev/null
+            timeout --preserve-status 2.5 ping -c1 www.google.com &>/dev/null
             local INTERNET_2ND_CHECK=$?
             if [ ! $INTERNET_UP -eq 0 ]
             then
