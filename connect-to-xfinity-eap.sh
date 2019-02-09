@@ -1,14 +1,8 @@
 #!/bin/sh
 
-function FindGateway() {
-    local GATEWAY_IP=$(ip route | grep default | sed -n -E 's/.*via ([0-9]+.[0-9]+.[0-9]+.[0-9]+).*/\1/p')
-    echo "$GATEWAY_IP"
-}
-
 function GetHashKeypair() {
-    local GATEWAY=$(FindGateway)
     local temp_file=$(mktemp)
-    curl -s -L "$GATEWAY" &>$temp_file
+    curl -s -L "1.1.1.1" &>$temp_file
     local HASH=$(sed -n -E 's/.*<input.*name="hash".*value="([^"]*)".*\/>.*/\1/p' $temp_file)
     echo "hash=$HASH"
     rm ${temp_file} > /dev/null
@@ -23,6 +17,7 @@ function IsAuthenticated() {
     then
         echo "Unauthenticated"
     elif [ ! $CURL_CODE -eq 0 ]
+    then
         echo "HttpError"
     else
         echo "Authenticated"
@@ -105,8 +100,9 @@ function MainLoop() {
             if [ $IS_AUTHENTICATED_RESULT == "Unauthenticated" ]
             then
                 logger xfinityForever "Detected comcast blocking internet!"
-                logger xfinityForever "Logging in using credentials..."
+                logger xfinityForever "Retreiving hidden form hash..."
                 local HASH_KEYPAIR="$(GetHashKeypair)"
+                logger xfinityForever "Submitting login information..."
                 local LOGIN_RESULT=$(Login $HASH_KEYPAIR)
                 local LOGIN_SUCCESS=$(WasLoginSuccessful $LOGIN_RESULT)
                 if [ $LOGIN_SUCCESS == "1" ]
