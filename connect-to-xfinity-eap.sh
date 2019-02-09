@@ -18,11 +18,14 @@ function IsAuthenticated() {
     local temp_file=$(mktemp)
     curl -s -L "https://prov.wifi.xfinity.com" &>$temp_file
     local AUTH_BUTTON=$(sed -n -E 's/.*<a href=".*wifi.xfinity.com\/".*>(.*)<\/a>.*/\1/p' $temp_file)
-    if [ "$AUTH_BUTTON" -eq "Continue" ]
+    local CURL_CODE=$?
+    if [ $CURL_CODE -eq 0 ] && [ "$AUTH_BUTTON" -eq "Continue" ]
     then
-        echo "1"
+        echo "Authenticated"
+    elif [ ! $CURL_CODE -eq 0 ]
+        echo "HttpError"
     else
-        echo "0"
+        echo "Unauthenticated"
     fi
     rm ${temp_file} > /dev/null
 }
@@ -98,8 +101,8 @@ function MainLoop() {
         local COMCAST_GATEWAY_UP=$?
         if [ ! $INTERNET_UP -eq 0 ] && [ $COMCAST_GATEWAY_UP -eq 0 ]
         then
-            local IS_AUTHENTICATED=$(IsAuthenticated)
-            if [ $IS_AUTHENTICATED -eq "0" ]
+            local IS_AUTHENTICATED_RESULT=$(IsAuthenticated)
+            if [ $IS_AUTHENTICATED_RESULT -eq "Unauthenticated" ]
             then
                 logger xfinityForever "Detected comcast blocking internet!"
                 logger xfinityForever "Logging in using credentials..."
@@ -124,6 +127,8 @@ function MainLoop() {
                     logger xfinityForever "Log in to comcast failed...was the username or password typed wrong?"
                     logger xfinityForever "Full Login Result: $LOGIN_RESULT"
                 fi
+            else
+                logger xfinityForever "Failed to access prov.wifi.xfinity.com. Result $IS_AUTHENTICATED_RESULT"
             fi
         fi
     done
