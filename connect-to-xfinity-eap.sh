@@ -85,32 +85,28 @@ function MainLoop() {
         local COMCAST_GATEWAY_UP=$?
         if [ ! $INTERNET_UP -eq 0 ] && [ $COMCAST_GATEWAY_UP -eq 0 ]
         then
-            echo "Detected comcast blocking internet!"
-            echo "Logging in using credentials..."
+            logger xfinityForever "Detected comcast blocking internet!"
+            logger xfinityForever "Logging in using credentials..."
             local HASH_KEYPAIR="$(GetHashKeypair)"
             local LOGIN_RESULT=$(Login $HASH_KEYPAIR)
             local LOGIN_SUCCESS=$(WasLoginSuccessful $LOGIN_RESULT)
             if [ $LOGIN_SUCCESS == "1" ]
             then
-                echo "Log in to EAP succeeded!"
-                echo "Building EAP Profile"
+                logger xfinityForever "Log in to EAP succeeded!"
+                logger xfinityForever "Building EAP Profile"
                 local BUILD_PROFILE_CONFIG_FILE=$(CreateBuildProfileRequestConfig "$LOGIN_RESULT")
                 local BUILD_PROFILE_RESULT=$(BuildEAPProfile $BUILD_PROFILE_CONFIG_FILE)
                 local BUILD_PROFILE_SUCCESS=$(WasBuildEAPSuccessful $BUILD_PROFILE_RESULT)
                 if [ $BUILD_PROFILE_SUCCESS == "1" ]
                 then
-                    echo "EAP Profile Built. Internet is back online!"
-                    printf "\n\n"
+                    logger xfinityForever "EAP Profile Built. Internet is back online!"
                 else
-                    echo "Building EAP profile failed...here is the output"
-                    printf "\n$BUILD_PROFILE_RESULT"
-                    
-                    printf "\n\n"
+                    logger xfinityForever "Building EAP profile failed...here is the output"
+                    logger xfinityForever "$BUILD_PROFILE_RESULT"
                 fi
             else
-                echo "Log in to comcast failed...was the username or password typed wrong?"
-                printf "\nFull Login Result: $LOGIN_RESULT"
-                printf "\n\n"
+                logger xfinityForever "Log in to comcast failed...was the username or password typed wrong?"
+                logger xfinityForever "Full Login Result: $LOGIN_RESULT"
             fi
         fi;
     done
