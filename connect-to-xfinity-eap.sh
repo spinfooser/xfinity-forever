@@ -14,6 +14,19 @@ function GetHashKeypair() {
     rm ${temp_file} > /dev/null
 }
 
+function IsAuthenticated() {
+    local temp_file=$(mktemp)
+    curl -s -L "https://prov.wifi.xfinity.com" &>$temp_file
+    local AUTH_BUTTON=$(sed -n -E 's/.*<a href=".*wifi.xfinity.com\/".*>(.*)<\/a>.*/\1/p' $temp_file)
+    if [ "$AUTH_BUTTON" -eq "Continue" ]
+    then
+        echo "1"
+    else
+        echo "0"
+    fi
+    rm ${temp_file} > /dev/null
+}
+
 function GetUserKeypair() {
     local USER="$(cat /etc/config/wireless | sed -n -E "s/.*option identity '(.*)@.*/\1/p")"
     echo "username=$USER"
@@ -77,7 +90,7 @@ function WasBuildEAPSuccessful() {
 function MainLoop() {
     while true;
     do
-        local SLEEP_AMOUNT=3
+        local SLEEP_AMOUNT=2
         sleep $SLEEP_AMOUNT
         timeout --preserve-status 0.25 ping -c1 1.1.1.1 &>/dev/null
         local INTERNET_UP=$?
@@ -85,9 +98,8 @@ function MainLoop() {
         local COMCAST_GATEWAY_UP=$?
         if [ ! $INTERNET_UP -eq 0 ] && [ $COMCAST_GATEWAY_UP -eq 0 ]
         then
-            timeout --preserve-status 3.0 ping -c1 1.1.1.1 &>/dev/null
-            local INTERNET_2ND_CHECK=$?
-            if [ ! $INTERNET_UP -eq 0 ]
+            local IS_AUTHENTICATED=$(IsAuthenticated)
+            if [ $IS_AUTHENTICATED -eq "0" ]
             then
                 logger xfinityForever "Detected comcast blocking internet!"
                 logger xfinityForever "Logging in using credentials..."
