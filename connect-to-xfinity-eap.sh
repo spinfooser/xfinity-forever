@@ -16,16 +16,16 @@ function GetHashKeypair() {
 
 function IsAuthenticated() {
     local temp_file=$(mktemp)
-    curl -s -L "https://prov.wifi.xfinity.com" &>$temp_file
-    local AUTH_BUTTON=$(sed -n -E 's/.*<a href=".*wifi.xfinity.com\/".*>(.*)<\/a>.*/\1/p' $temp_file)
+    curl -s -i "1.1.1.1" &>$temp_file
+    local REDIRECT=$(sed -n -E 's/.*Location: https:\/\/prov.wifi.xfinity.com?h=.*/\1/p' $temp_file)
     local CURL_CODE=$?
-    if [ $CURL_CODE -eq 0 ] && [ "$AUTH_BUTTON" -eq "Continue" ]
+    if [ $CURL_CODE -eq 0 ] && [ -z "$REDIRECT" ]
     then
-        echo "Authenticated"
+        echo "Unauthenticated"
     elif [ ! $CURL_CODE -eq 0 ]
         echo "HttpError"
     else
-        echo "Unauthenticated"
+        echo "Authenticated"
     fi
     rm ${temp_file} > /dev/null
 }
@@ -102,7 +102,7 @@ function MainLoop() {
         if [ ! $INTERNET_UP -eq 0 ] && [ $COMCAST_GATEWAY_UP -eq 0 ]
         then
             local IS_AUTHENTICATED_RESULT=$(IsAuthenticated)
-            if [ $IS_AUTHENTICATED_RESULT -eq "Unauthenticated" ]
+            if [ $IS_AUTHENTICATED_RESULT == "Unauthenticated" ]
             then
                 logger xfinityForever "Detected comcast blocking internet!"
                 logger xfinityForever "Logging in using credentials..."
