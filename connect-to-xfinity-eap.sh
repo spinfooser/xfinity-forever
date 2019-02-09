@@ -85,30 +85,35 @@ function MainLoop() {
         local COMCAST_GATEWAY_UP=$?
         if [ ! $INTERNET_UP -eq 0 ] && [ $COMCAST_GATEWAY_UP -eq 0 ]
         then
-            logger xfinityForever "Detected comcast blocking internet!"
-            logger xfinityForever "Logging in using credentials..."
-            local HASH_KEYPAIR="$(GetHashKeypair)"
-            local LOGIN_RESULT=$(Login $HASH_KEYPAIR)
-            local LOGIN_SUCCESS=$(WasLoginSuccessful $LOGIN_RESULT)
-            if [ $LOGIN_SUCCESS == "1" ]
+            timeout --preserve-status 1.5 ping -c1 www.google.com &>/dev/null
+            local INTERNET_2ND_CHECK=$?
+            if [ ! $INTERNET_UP -eq 0 ]
             then
-                logger xfinityForever "Log in to EAP succeeded!"
-                logger xfinityForever "Building EAP Profile"
-                local BUILD_PROFILE_CONFIG_FILE=$(CreateBuildProfileRequestConfig "$LOGIN_RESULT")
-                local BUILD_PROFILE_RESULT=$(BuildEAPProfile $BUILD_PROFILE_CONFIG_FILE)
-                local BUILD_PROFILE_SUCCESS=$(WasBuildEAPSuccessful $BUILD_PROFILE_RESULT)
-                if [ $BUILD_PROFILE_SUCCESS == "1" ]
+                logger xfinityForever "Detected comcast blocking internet!"
+                logger xfinityForever "Logging in using credentials..."
+                local HASH_KEYPAIR="$(GetHashKeypair)"
+                local LOGIN_RESULT=$(Login $HASH_KEYPAIR)
+                local LOGIN_SUCCESS=$(WasLoginSuccessful $LOGIN_RESULT)
+                if [ $LOGIN_SUCCESS == "1" ]
                 then
-                    logger xfinityForever "EAP Profile Built. Internet is back online!"
+                    logger xfinityForever "Log in to EAP succeeded!"
+                    logger xfinityForever "Building EAP Profile"
+                    local BUILD_PROFILE_CONFIG_FILE=$(CreateBuildProfileRequestConfig "$LOGIN_RESULT")
+                    local BUILD_PROFILE_RESULT=$(BuildEAPProfile $BUILD_PROFILE_CONFIG_FILE)
+                    local BUILD_PROFILE_SUCCESS=$(WasBuildEAPSuccessful $BUILD_PROFILE_RESULT)
+                    if [ $BUILD_PROFILE_SUCCESS == "1" ]
+                    then
+                        logger xfinityForever "EAP Profile Built. Internet is back online!"
+                    else
+                        logger xfinityForever "Building EAP profile failed...here is the output"
+                        logger xfinityForever "$BUILD_PROFILE_RESULT"
+                    fi
                 else
-                    logger xfinityForever "Building EAP profile failed...here is the output"
-                    logger xfinityForever "$BUILD_PROFILE_RESULT"
+                    logger xfinityForever "Log in to comcast failed...was the username or password typed wrong?"
+                    logger xfinityForever "Full Login Result: $LOGIN_RESULT"
                 fi
-            else
-                logger xfinityForever "Log in to comcast failed...was the username or password typed wrong?"
-                logger xfinityForever "Full Login Result: $LOGIN_RESULT"
             fi
-        fi;
+        fi
     done
 }
 
