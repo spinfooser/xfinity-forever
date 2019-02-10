@@ -1,26 +1,38 @@
 #!/bin/sh
 
+
+function GetLoginFormBody() {
+    # Causes redirect to comcast login form
+    local OUTPUT=$(curl -s -L "1.1.1.1" 2>&1)
+    echo "$OUTPUT"
+}
+
+# Argument #1: Output from LoginFormBody request
 function GetHashKeypair() {
-    local temp_file=$(mktemp)
-    curl -s -L "1.1.1.1" &>$temp_file
-    local HASH=$(sed -n -E 's/.*<input.*name="hash".*value="([^"]*)".*\/>.*/\1/p' $temp_file)
+    local HASH=$(echo "$1" | sed -n -E 's/.*<input.*name="hash".*value="([^"]*)".*\/>.*/\1/p')
     echo "hash=$HASH"
-    rm ${temp_file} > /dev/null
+}
+
+function WasHashKeypairSuccessful() {
+    local RESULT=$(echo "$1" | sed -n -E 's/(hash=.+)/\1/p')
+    if [ -z "$RESULT" ]; then
+        echo "Error"
+    else
+        echo "Success"
+    fi
 }
 
 function IsAuthenticated() {
     local temp_file=$(mktemp)
     curl -s -i "1.1.1.1" &>$temp_file
-    local REDIRECT=$(sed -n -E 's/.*Location: https:\/\/prov.wifi.xfinity.com?h=.*/\1/p' $temp_file)
+    local REDIRECT=$(sed -n -E 's/.*Location: .+xfinity.com/\1/p' $temp_file)
     local CURL_CODE=$?
-    if [ $CURL_CODE -eq 0 ] && [ -z "$REDIRECT" ]
-    then
-        echo "Unauthenticated"
-    elif [ ! $CURL_CODE -eq 0 ]
-    then
+    if [ $CURL_CODE -eq 0 ] && [ -z "$REDIRECT" ]; then
+        echo "Authenticated"
+    elif [ ! $CURL_CODE -eq 0 ]; then
         echo "HttpError"
     else
-        echo "Authenticated"
+        echo "Unauthenticated"
     fi
     rm ${temp_file} > /dev/null
 }
@@ -53,9 +65,9 @@ function WasLoginSuccessful() {
     local REDIRECT=$(echo $1 | sed -n -E 's/.*Location: https:\/\/prov.wifi.xfinity.com\/index.php?prov_type=eap.*/\1/p')
     if [ -z "$REDIRECT" ]
     then
-        echo "1"
+        echo "Success"
     else
-        echo "0"
+        echo "Error"
     fi
 }
 
@@ -79,9 +91,9 @@ function WasBuildEAPSuccessful() {
     local REDIRECT=$(echo $1 | sed -n -E 's/.*Location: http:\/\/wifi.xfinity.com\/.*/\1/p')
     if [ -z "$REDIRECT" ] && [ ! -z "$1" ]
     then
-        echo "1"
+        echo "Success"
     else
-        echo "0"
+        echo "Error"
     fi
 }
 
@@ -90,42 +102,61 @@ function MainLoop() {
     do
         local SLEEP_AMOUNT=2
         sleep $SLEEP_AMOUNT
-        timeout --preserve-status 0.25 ping -c1 1.1.1.1 &>/dev/null
+        timeout --preserve-status 0.50 ping -c1 1.1.1.1 &>/dev/null
         local INTERNET_UP=$?
-        timeout --preserve-status 0.25 ping -c1 10.224.0.1 &>/dev/null
+        timeout --preserve-status 0.75 ping -c1 10.224.0.1 &>/dev/null
         local COMCAST_GATEWAY_UP=$?
-        if [ ! $INTERNET_UP -eq 0 ] && [ $COMCAST_GATEWAY_UP -eq 0 ]
-        then
+        if [ ! $INTERNET_UP -eq 0 ] && [ $COMCAST_GATEWAY_UP -eq 0 ]; then
             local IS_AUTHENTICATED_RESULT=$(IsAuthenticated)
-            if [ $IS_AUTHENTICATED_RESULT == "Unauthenticated" ]
-            then
-                logger xfinityForever "Detected comcast blocking internet!"
-                logger xfinityForever "Retreiving hidden form hash..."
-                local HASH_KEYPAIR="$(GetHashKeypair)"
-                logger xfinityForever "Submitting login information..."
-                local LOGIN_RESULT=$(Login $HASH_KEYPAIR)
-                local LOGIN_SUCCESS=$(WasLoginSuccessful $LOGIN_RESULT)
-                if [ $LOGIN_SUCCESS == "1" ]
-                then
-                    logger xfinityForever "Log in to EAP succeeded!"
-                    logger xfinityForever "Building EAP Profile"
-                    local BUILD_PROFILE_CONFIG_FILE=$(CreateBuildProfileRequestConfig "$LOGIN_RESULT")
-                    local BUILD_PROFILE_RESULT=$(BuildEAPProfile $BUILD_PROFILE_CONFIG_FILE)
-                    local BUILD_PROFILE_SUCCESS=$(WasBuildEAPSuccessful $BUILD_PROFILE_RESULT)
-                    if [ $BUILD_PROFILE_SUCCESS == "1" ]
-                    then
-                        logger xfinityForever "EAP Profile Built. Internet is back online!"
-                    else
-                        logger xfinityForever "Building EAP profile failed...here is the output"
-                        logger xfinityForever "$BUILD_PROFILE_RESULT"
-                    fi
-                else
-                    logger xfinityForever "Log in to comcast failed...was the username or password typed wrong?"
-                    logger xfinityForever "Full Login Result: $LOGIN_RESULT"
-                fi
-            else
+            if [ $IS_AUTHENTICATED_RESULT == "Authenticated" ]; then
+                continue
+            elif [ $IS_AUTHENTICATED_RESULT == "HttpError" ]; then
                 logger xfinityForever "Failed to access prov.wifi.xfinity.com. Result $IS_AUTHENTICATED_RESULT"
             fi
+            logger xfinityForever "Detected comcast blocking internet!"
+            logger xfinityForever "Retreiving hidden form hash..."
+            local LOGIN_FORM=$(GetLoginFormBody)
+            local LOGIN_FORM_CODE=$?
+            if [ ! $LOGIN_FORM_CODE -eq 0 ]; then
+                logger xfinityForever "Form curl request failed with error code $LOGIN_FORM_CODE"
+                logger xfinityForever "Error response: $LOGIN_FORM"
+                continue
+            fi
+
+            local HASH_KEYPAIR=$(GetHashKeypair "$LOGIN_FORM")
+            local HASH_EXTRACT_RESULT=$(WasHashKeypairSuccessful $HASH_KEYPAIR)
+            if [ $HASH_EXTRACT_RESULT == "Error" ]; then
+                logger xfinityForever "Failed to extract hash code from login form"
+                logger xfinityForever "Hash keypair: $HASH_KEYPAIR"
+                continue
+            fi
+
+            logger xfinityForever "Submitting login information..."
+            local LOGIN_RESULT=$(Login $HASH_KEYPAIR)
+            local LOGIN_CODE=$?
+            if [ ! $LOGIN_CODE -eq 0 ]; then
+                logger xfinityForever "Login curl failed with error code $LOGIN_CODE. Result: $LOGIN_RESULT"
+                continue
+            fi
+
+            local LOGIN_SUCCESS=$(WasLoginSuccessful "$LOGIN_RESULT")
+            if [ $LOGIN_SUCCESS == "Error" ]; then
+                logger xfinityForever "Log in to comcast failed...was the username or password typed wrong?"
+                logger xfinityForever "Full Login Result: $LOGIN_RESULT"
+                continue
+            fi
+
+            logger xfinityForever "Log in to EAP succeeded!"
+            logger xfinityForever "Building EAP Profile"
+            local BUILD_PROFILE_CONFIG_FILE=$(CreateBuildProfileRequestConfig "$LOGIN_RESULT")
+            local BUILD_PROFILE_RESULT=$(BuildEAPProfile $BUILD_PROFILE_CONFIG_FILE)
+            local BUILD_PROFILE_SUCCESS=$(WasBuildEAPSuccessful "$BUILD_PROFILE_RESULT")
+            if [ $BUILD_PROFILE_SUCCESS == "Error" ]; then
+                logger xfinityForever "Building EAP profile failed: $BUILD_PROFILE_RESULT"
+                continue
+            fi
+
+            logger xfinityForever "EAP Profile Built. Internet is back online!"
         fi
     done
 }
