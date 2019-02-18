@@ -100,19 +100,15 @@ function WasBuildEAPSuccessful() {
 function MainLoop() {
     while true;
     do
-        local SLEEP_AMOUNT=2
+        local SLEEP_AMOUNT=3
         sleep $SLEEP_AMOUNT
         timeout --preserve-status 0.50 ping -c1 1.1.1.1 &>/dev/null
         local INTERNET_UP=$?
-        timeout --preserve-status 0.75 ping -c1 10.224.0.1 &>/dev/null
-        local COMCAST_GATEWAY_UP=$?
-        if [ ! $INTERNET_UP -eq 0 ] && [ $COMCAST_GATEWAY_UP -eq 0 ]; then
-            local IS_AUTHENTICATED_RESULT=$(IsAuthenticated)
-            if [ $IS_AUTHENTICATED_RESULT == "Authenticated" ]; then
-                continue
-            elif [ $IS_AUTHENTICATED_RESULT == "HttpError" ]; then
-                logger xfinityForever "Failed to access prov.wifi.xfinity.com. Result $IS_AUTHENTICATED_RESULT"
-            fi
+        local IS_AUTHENTICATED_RESULT=$(IsAuthenticated)
+        if [ $IS_AUTHENTICATED_RESULT == "HttpError" ]; then
+            logger xfinityForever "Failed to access prov.wifi.xfinity.com. Result $IS_AUTHENTICATED_RESULT"
+        fi
+        if [ ! $INTERNET_UP -eq 0 ] && [ $IS_AUTHENTICATED_RESULT == "Unauthenticated" ]; then
             logger xfinityForever "Detected comcast blocking internet!"
             logger xfinityForever "Retreiving hidden form hash..."
             local LOGIN_FORM=$(GetLoginFormBody)
@@ -157,6 +153,9 @@ function MainLoop() {
             fi
 
             logger xfinityForever "EAP Profile Built. Internet is back online!"
+            # Comcast requires reauth every 8 hours. Postpone until 10 minutes before expiry just in case.
+            at -f /usr/bin/connect-to-xfinity-eap.sh now +470 minutes
+            exit 0
         fi
     done
 }
