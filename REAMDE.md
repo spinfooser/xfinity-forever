@@ -10,7 +10,7 @@ This script is only tested for OpenWRT.
 Two packages must be installed through opkg:
 
 - curl
-- coreutils-timeout
+- wpad
 
 # LAN DNS Configuration
 

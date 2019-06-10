@@ -3,13 +3,13 @@
 
 function GetLoginFormBody() {
     # Causes redirect to comcast login form
-    local OUTPUT=$(curl -s -L "1.1.1.1" 2>&1)
+    local OUTPUT=$(curl --max-time 1.0 -s -L "1.1.1.1" 2>&1)
     echo "$OUTPUT"
 }
 
 # Argument #1: Output from LoginFormBody request
 function GetHashKeypair() {
-    local HASH=$(echo "$1" | sed -n -E 's/.*<input.*name="hash".*value="([^"]*)".*\/>.*/\1/p')
+    local HASH=$(echo "$1" | sed -n -E "s/.*'hash': \"([^\"]*)\",.*/\1/p")
     echo "hash=$HASH"
 }
 
@@ -24,9 +24,9 @@ function WasHashKeypairSuccessful() {
 
 function IsAuthenticated() {
     local temp_file=$(mktemp)
-    curl -s -i "1.1.1.1" &>$temp_file
-    local REDIRECT=$(sed -n -E 's/.*Location: .+xfinity.com/\1/p' $temp_file)
+    curl -s -i --max-time 1.0 "1.1.1.1" &>$temp_file
     local CURL_CODE=$?
+    local REDIRECT=$(sed -n -E 's/.*Location: .+xfinity.com/\1/p' $temp_file)
     if [ $CURL_CODE -eq 0 ] && [ -z "$REDIRECT" ]; then
         echo "Authenticated"
     elif [ ! $CURL_CODE -eq 0 ]; then
@@ -49,7 +49,7 @@ function GetPasswordKeypair() {
 
 function Login() {
     local HASH_KEY_PAIR=$1
-    curl -s -S 'https://prov.wifi.xfinity.com/eap_login_prov.php' -H 'Content-Type: application/x-www-form-urlencoded' \
+    curl --max-time 1.0 -s -S 'https://prov.wifi.xfinity.com/eap_login_prov.php' -H 'Content-Type: application/x-www-form-urlencoded' \
         -H 'Origin: https://prov.wifi.xfinity.com' \
         -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36' \
         --data-urlencode "$(GetUserKeypair)" \
@@ -73,7 +73,7 @@ function WasLoginSuccessful() {
 
 function BuildEAPProfile() {
     local CONFIG_FILE_NAME="$1"
-    local OUTPUT=$(curl -sSv -K $CONFIG_FILE_NAME 2>&1)
+    local OUTPUT=$(curl --max-time 1.0 -sSv -K $CONFIG_FILE_NAME 2>&1)
     rm ${CONFIG_FILE_NAME} > /dev/null
     echo "$OUTPUT"
 }
@@ -102,13 +102,11 @@ function MainLoop() {
     do
         local SLEEP_AMOUNT=3
         sleep $SLEEP_AMOUNT
-        timeout --preserve-status 0.50 ping -c1 1.1.1.1 &>/dev/null
-        local INTERNET_UP=$?
         local IS_AUTHENTICATED_RESULT=$(IsAuthenticated)
         if [ $IS_AUTHENTICATED_RESULT == "HttpError" ]; then
-            logger xfinityForever "Failed to access prov.wifi.xfinity.com. Result $IS_AUTHENTICATED_RESULT"
+            logger xfinityForever "Failed to connect to reach any network address. Result: $IS_AUTHENTICATED_RESULT"
         fi
-        if [ ! $INTERNET_UP -eq 0 ] && [ $IS_AUTHENTICATED_RESULT == "Unauthenticated" ]; then
+        if [ $IS_AUTHENTICATED_RESULT == "Unauthenticated" ]; then
             logger xfinityForever "Detected comcast blocking internet!"
             logger xfinityForever "Retreiving hidden form hash..."
             local LOGIN_FORM=$(GetLoginFormBody)
@@ -153,9 +151,6 @@ function MainLoop() {
             fi
 
             logger xfinityForever "EAP Profile Built. Internet is back online!"
-            # Comcast requires reauth every 8 hours. Postpone until 10 minutes before expiry just in case.
-            at -f /usr/bin/connect-to-xfinity-eap.sh now +470 minutes
-            exit 0
         fi
     done
 }
