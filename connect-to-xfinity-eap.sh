@@ -100,7 +100,7 @@ function WasBuildEAPSuccessful() {
 function MainLoop() {
     while true;
     do
-        local SLEEP_AMOUNT=3
+        local SLEEP_AMOUNT=6
         sleep $SLEEP_AMOUNT
         local IS_AUTHENTICATED_RESULT=$(IsAuthenticated)
         if [ $IS_AUTHENTICATED_RESULT == "HttpError" ]; then
