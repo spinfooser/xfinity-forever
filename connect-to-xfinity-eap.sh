@@ -98,13 +98,31 @@ function WasBuildEAPSuccessful() {
 }
 
 function MainLoop() {
+    local BASE=1 # Base value for backoff calculation
+    local MAX=100 # Max value for backoff calculation
+    local FAILURES=0
+    local MIN_SLEEP=6
+
+    sleep 15
     while true;
     do
-        local SLEEP_AMOUNT=6
-        sleep $SLEEP_AMOUNT
+        local SECONDS=$(( $BASE * 2 ** $FAILURES ))
+        if [ $SECONDS -gt $MAX ]; then
+            SECONDS=$MAX
+        fi
+
+        SECONDS=$(( $SECONDS + $MIN_SLEEP ))
+
+        if [ $FAILURES -gt 0 ]; then
+            logger xfinityForever "Exponential backoff with $FAILURES failure(s). Waiting $SECONDS seconds."
+        fi
+
+        sleep $SECONDS
+
         local IS_AUTHENTICATED_RESULT=$(IsAuthenticated)
         if [ $IS_AUTHENTICATED_RESULT == "HttpError" ]; then
-            logger xfinityForever "Failed to connect to reach any network address. Result: $IS_AUTHENTICATED_RESULT"
+            logger xfinityForever "Network is down."
+            FAILURES=0
         fi
         if [ $IS_AUTHENTICATED_RESULT == "Unauthenticated" ]; then
             logger xfinityForever "Detected comcast blocking internet!"
@@ -114,6 +132,7 @@ function MainLoop() {
             if [ ! $LOGIN_FORM_CODE -eq 0 ]; then
                 logger xfinityForever "Form curl request failed with error code $LOGIN_FORM_CODE"
                 logger xfinityForever "Error response: $LOGIN_FORM"
+                FAILURES=$(( $FAILURES + 1 ))
                 continue
             fi
 
@@ -122,6 +141,7 @@ function MainLoop() {
             if [ $HASH_EXTRACT_RESULT == "Error" ]; then
                 logger xfinityForever "Failed to extract hash code from login form"
                 logger xfinityForever "Hash keypair: $HASH_KEYPAIR"
+                FAILURES=$(( $FAILURES + 1 ))
                 continue
             fi
 
@@ -130,6 +150,7 @@ function MainLoop() {
             local LOGIN_CODE=$?
             if [ ! $LOGIN_CODE -eq 0 ]; then
                 logger xfinityForever "Login curl failed with error code $LOGIN_CODE. Result: $LOGIN_RESULT"
+                FAILURES=$(( $FAILURES + 1 ))
                 continue
             fi
 
@@ -137,6 +158,7 @@ function MainLoop() {
             if [ $LOGIN_SUCCESS == "Error" ]; then
                 logger xfinityForever "Log in to comcast failed...was the username or password typed wrong?"
                 logger xfinityForever "Full Login Result: $LOGIN_RESULT"
+                FAILURES=$(( $FAILURES + 1 ))
                 continue
             fi
 
@@ -147,11 +169,13 @@ function MainLoop() {
             local BUILD_PROFILE_SUCCESS=$(WasBuildEAPSuccessful "$BUILD_PROFILE_RESULT")
             if [ $BUILD_PROFILE_SUCCESS == "Error" ]; then
                 logger xfinityForever "Building EAP profile failed: $BUILD_PROFILE_RESULT"
+                FAILURES=$(( $FAILURES + 1 ))
                 continue
             fi
 
             logger xfinityForever "EAP Profile Built. Internet is back online!"
         fi
+        FAILURES=0
     done
 }
 
