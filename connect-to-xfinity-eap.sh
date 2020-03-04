@@ -3,7 +3,7 @@
 
 function GetLoginFormBody() {
     # Causes redirect to comcast login form
-    local OUTPUT=$(curl --max-time 1.0 -s -L "1.1.1.1" 2>&1)
+    local OUTPUT=$(curl --max-time 1.0 -s -L "1.1.1.1" -H 'User Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36' 2>&1)
     echo "$OUTPUT"
 }
 
